@@ -1,5 +1,5 @@
 import datetime
-
+from numpy import asarray
 
 # Размеры окна в пикселях
 WINDOW_WIDTH = 640
@@ -19,15 +19,20 @@ APPLE_OUTER_COLOR = (155, 0, 0)
 SNAKE_COLOR = (0, 255, 0)
 SNAKE_OUTER_COLOR = (0, 155, 0)
 
-UP = 'up'
-DOWN = 'down'
-LEFT = 'left'
-RIGHT = 'right'
+# UP = 'up'
+# DOWN = 'down'
+# LEFT = 'left'
+# RIGHT = 'right'
+UP = asarray([1., 0., 0., 0.])
+DOWN = asarray([0., 1., 0., 0.])
+LEFT = asarray([0., 0., 1., 0.])
+RIGHT = asarray([0., 0., 0., 1.])
 
 HEAD = 0
 
-FPS = 10
+FPS = 100
 
+DEVICE = 'cuda'  # 'cuda' if torch.cuda.is_available() else 'cpu'
 
 params = dict()
 # Neural Network
@@ -40,8 +45,9 @@ params['episodes'] = 250
 params['memory_size'] = 2500
 params['batch_size'] = 1000
 # Settings
+params['load_weights'] = False
 params['weights_path'] = 'weights/weights.h5'
 params['train'] = True
 params["test"] = False
 params['plot_score'] = True
-params['log_path'] = 'logs/scores_' + str(datetime.datetime.now().strftime("%Y%m%d%H%M%S")) + '.txt'
+# params['log_path'] = 'logs/scores_' + str(datetime.datetime.now().strftime("%Y%m%d%H%M%S")) + '.txt'

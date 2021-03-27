@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from game import Snake, Apple
 from game import snake_hit_edge, snake_hit_apple, snake_hit_self
 
-DEVICE = 'cuda'  # 'cuda' if torch.cuda.is_available() else 'cpu'
+from settings import DEVICE
 
 
 class Agent(nn.Module):
@@ -36,7 +36,7 @@ class Agent(nn.Module):
         self.f1 = nn.Linear(12, self.first_layer)
         self.f2 = nn.Linear(self.first_layer, self.second_layer)
         self.f3 = nn.Linear(self.second_layer, self.third_layer)
-        self.f4 = nn.Linear(self.third_layer, 5)
+        self.f4 = nn.Linear(self.third_layer, 4)
         # Weights
         if self.load_weights:
             self.model = self.load_state_dict(torch.load(self.weights))

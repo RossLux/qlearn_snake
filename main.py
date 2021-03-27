@@ -1,7 +1,9 @@
+import random
+import numpy as np
+import torch
 import pygame
 import sys
 import json
-from numpy import asarray
 from settings import *
 from game import Cell, Snake, Apple
 from game import get_snake_new_head, snake_hit_edge, snake_hit_apple, get_direction, snake_hit_self
@@ -12,7 +14,7 @@ from player1 import Agent
 import torch.optim as optim
 
 
-def get_state_in_json(player_score, high_score, head_pos, snake_pos, apple_pos, prev_direction):
+def get_state_in_json(player_score, high_score, head_pos, snake_pos, apple_pos, prev_direction: np.ndarray):
     food_above = int(head_pos[1] < apple_pos.y)
     food_below = int(head_pos[1] > apple_pos.y)
     food_left = int(head_pos[0] > apple_pos.x)
@@ -33,11 +35,11 @@ def get_state_in_json(player_score, high_score, head_pos, snake_pos, apple_pos, 
          "Head Position: ": head_pos,
          "Snake Position: ": [(block.x, block.y) for block in snake_pos],
          "Apple Position: ": (apple_pos.x, apple_pos.y),
-         "Previous Direction: ": prev_direction,
-         "Moving Up": int(prev_direction == 'up'),
-         "Moving Down": int(prev_direction == 'down'),
-         "Moving Left": int(prev_direction == 'left'),
-         "Moving Right": int(prev_direction == 'right'),
+         "Previous Direction: ": str(prev_direction),
+         "Moving Up": int((prev_direction == UP).all()),
+         "Moving Down": int((prev_direction == DOWN).all()),
+         "Moving Left": int((prev_direction == LEFT).all()),
+         "Moving Right": int((prev_direction == RIGHT).all()),
          "Food Above: ": food_above,
          "Food Below: ": food_below,
          "Food Left: ": food_left,
@@ -93,34 +95,52 @@ def main():
     # like, action taken, previous snake direction, current snake position, apple position etc.
     STATE = {}
 
+    score_plot = []
+    counter_plot = []
+
     pygame.init()
     FPS_CLOCK = pygame.time.Clock()
     DISPLAY = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     SCORE = ScoreBoard()
 
-    # Create Player 1.
-    agent = Agent(params).to_device()
-    agent.optimizer = optim.Adam(agent.parameters(), weight_decay=0, lr=params['learning_rate'])
+    # Ready Player 1.
+    player1 = Agent(params).to_device()
+    player1.optimizer = optim.Adam(player1.parameters(), weight_decay=0, lr=params['learning_rate'])
 
     # Game counter initialize.
     game_number = 1
     while game_number < params['episodes']:
+
         # Мы всегда будем начинать игру с начала. После проигрыша сразу
         # начинается следующая.
-        run_game(game_number)
+        run_game(player1, game_number)
+
+        if params['train']:
+            player1.replay_new(player1.memory, params['batch_size'])
+
+        score_plot.append(SCORE.player_score)
+        counter_plot.append(game_number)
+        mean = np.mean(score_plot)
+        stdev = np.std(score_plot)
         # Increment game counter before start new game.
         game_number += 1
 
+        if params['train']:
+            model_weights = player1.state_dict()
+            torch.save(model_weights, params["weights_path"])
+        if params['plot_score']:
+            SCORE.plot_seaborn(counter_plot, score_plot, params['train'])
 
-def run_game(game_number):
+
+def run_game(agent, game_number):
     # создать яблоко в позиции (20, 10)
-    apple = Apple(Cell(WINDOW_WIDTH / WIDTH * 20, WINDOW_HEIGHT / HEIGHT * 10, DISPLAY))
+    apple = Apple(Cell(WINDOW_WIDTH / WIDTH * round(WIDTH/3), WINDOW_HEIGHT / HEIGHT * round(HEIGHT/2), DISPLAY))
     # создать змейку. Пусть она состоит из трех ячеек
     #  в строке 10 и столбцах 3, 4, 5.
     #  Какой тип данных удобен для представления змейки?
-    snake = Snake(Cell(WINDOW_WIDTH / WIDTH * 5, WINDOW_HEIGHT / HEIGHT * 10, DISPLAY),
-                  Cell(WINDOW_WIDTH / WIDTH * 4, WINDOW_HEIGHT / HEIGHT * 10, DISPLAY),
-                  Cell(WINDOW_WIDTH / WIDTH * 3, WINDOW_HEIGHT / HEIGHT * 10, DISPLAY))
+    snake = Snake(Cell(WINDOW_WIDTH / WIDTH * 4, WINDOW_HEIGHT / HEIGHT * round(HEIGHT/4), DISPLAY),
+                  Cell(WINDOW_WIDTH / WIDTH * 3, WINDOW_HEIGHT / HEIGHT * round(HEIGHT/4), DISPLAY),
+                  Cell(WINDOW_WIDTH / WIDTH * 2, WINDOW_HEIGHT / HEIGHT * round(HEIGHT/4), DISPLAY))
 
     # Reset player score.
     SCORE.player_score = 0
@@ -150,48 +170,103 @@ def run_game(game_number):
                 # If any direction key was pressed - assign corresponding action.
                 action = snake.direction
 
-        # Appending the current action (could be 'None') and the current state of the snake to
-        # the list - "Action-State List".
-        action_state_list.append(({f"Action {action_counter}": action},
-                                  get_state_in_json(player_score=SCORE.player_score,
-                                                    high_score=SCORE.high_score,
-                                                    head_pos=get_snake_new_head(snake),
-                                                    snake_pos=snake.body,
-                                                    apple_pos=apple.apple,
-                                                    prev_direction=snake_prev_direction)
+        steps = 0  # steps since the last positive reward
+        while (not any((snake_hit_self(snake), snake_hit_edge(snake)))) and (steps < 100):
+            if not params['train']:
+                agent.epsilon = 0.01
+            else:
+                # agent.epsilon is set to give randomness to actions
+                agent.epsilon = 1 - (game_number * params['epsilon_decay_linear'])
 
-                                  ))
-        # "Action-State List" to current game and write json on disk.
-        STATE[f"Game #{game_number}"] = action_state_list
+            # get previous environment state.
+            state_old = get_state(
+                get_state_in_json(player_score=SCORE.player_score,
+                                  high_score=SCORE.high_score,
+                                  head_pos=get_snake_new_head(snake),
+                                  snake_pos=snake.body,
+                                  apple_pos=apple.apple,
+                                  prev_direction=snake_prev_direction)
+            )
+
+            # perform random actions based on agent.epsilon, or choose the action
+            if random.uniform(0, 1) < agent.epsilon:
+                snake.direction = np.eye(4)[random.randint(0, 3)]
+            else:
+                # predict action based on the old state
+                with torch.no_grad():
+                    state_old_tensor = torch.tensor(state_old.reshape((1, 12)), dtype=torch.float32).to(DEVICE)
+                    prediction = agent(state_old_tensor)
+                    snake.direction = np.eye(4)[np.argmax(prediction.detach().cpu().numpy()[0])]
+
+            # сдвинуть змейку в заданном направлении
+            snake.move()
+
+            # обработайте ситуацию столкновения змейки с яблоком.
+            #  В этом случае нужно:
+            #  * Увеличить размер змейки
+            #  * Создать новое яблоко.
+            if snake_hit_apple(snake, apple):
+                snake.grow()
+                apple.spawn([(block.x, block.y) for block in snake.body])  # check apple does not spawn on snake.
+                SCORE.score()
+
+            # Calculate new environment state after snake moved.
+            state_new = get_state(
+                get_state_in_json(player_score=SCORE.player_score,
+                                  high_score=SCORE.high_score,
+                                  head_pos=get_snake_new_head(snake),
+                                  snake_pos=snake.body,
+                                  apple_pos=apple.apple,
+                                  prev_direction=snake_prev_direction)
+            )
+
+            # Set reward for the new state.
+            reward = agent.set_reward(snake, apple)
+
+            # If snake hit apple, reset steps counter to 0.
+            if reward > 0:
+                steps = 0
+
+            if params['train']:
+                # train short memory base on the new action and state
+                agent.train_short_memory(state_old, snake.direction, reward, state_new,
+                                         any((snake_hit_self(snake), snake_hit_edge(snake))))
+                # store the new data into a long term memory
+                agent.remember(state_old, snake.direction, reward, state_new,
+                               any((snake_hit_self(snake), snake_hit_edge(snake))))
+
+            # передать яблоко в функцию отрисовки кадра
+            # передать змейку в функцию отрисовки кадра
+            draw_frame(snake, apple, SCORE)
+            FPS_CLOCK.tick(FPS)
+
+            steps += 1
+
+            # Appending the current action (could be 'none') and the current state of the snake to
+            # the list - "Action-State List".
+            action_state_list.append(({f"Action {action_counter}": action},
+                                      get_state_in_json(player_score=SCORE.player_score,
+                                                        high_score=SCORE.high_score,
+                                                        head_pos=get_snake_new_head(snake),
+                                                        snake_pos=snake.body,
+                                                        apple_pos=apple.apple,
+                                                        prev_direction=snake_prev_direction)
+
+                                      ))
+            # "Action-State List" to current game and write json on disk.
+            STATE[f"Game #{game_number}"] = action_state_list
 
         # если змейка достигла границы окна, завершить игру.
         #  Для проверки воспользуйтесь функцией snake_hit_edge.
         if snake_hit_edge(snake):
             write_state_to_file(STATE, CURRENT_TIME)
-            run_game(game_number + 1)
+            run_game(agent, game_number + 1)
 
         # если змейка задела свой хвост, завершить игру.
         #  Для проверки восппользуйтесь функцией snake_hit_self.
         if snake_hit_self(snake):
             write_state_to_file(STATE, CURRENT_TIME)
-            run_game(game_number + 1)
-
-        # обработайте ситуацию столкновения змейки с яблоком.
-        #  В этом случае нужно:
-        #  * Увеличить размер змейки
-        #  * Создать новое яблоко.
-        if snake_hit_apple(snake, apple):
-            snake.grow()
-            apple.spawn([(block.x, block.y) for block in snake.body])  # check apple does not spawn on snake.
-            SCORE.score()
-
-        # сдвинуть змейку в заданном направлении
-        snake.move()
-
-        # передать яблоко в функцию отрисовки кадра
-        # передать змейку в функцию отрисовки кадра
-        draw_frame(snake, apple, SCORE)
-        FPS_CLOCK.tick(FPS)
+            run_game(agent, game_number + 1)
 
 
 def draw_frame(snake, apple, score):

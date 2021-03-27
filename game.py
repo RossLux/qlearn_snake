@@ -1,6 +1,7 @@
 from settings import *
 import pygame
 import random
+from numpy import ndarray
 
 
 class Cell:
@@ -48,13 +49,13 @@ class Apple:
 
 
 class Snake:
-    def __init__(self, display, *args: Cell):
+    def __init__(self, *args: Cell):
         # создать змейку. Пусть она состоит из трех ячеек
         #  в строке 10 и столбцах 3, 4, 5.
         #  Какой тип данных удобен для представления змейки?
         self.body = [*args]
         # задать исходное направление движения змейки.
-        self.direction = RIGHT
+        self.direction: ndarray = RIGHT
         self.head = [*args][0]
 
     def draw_snake(self):
@@ -73,13 +74,13 @@ class Snake:
 
         for _, block in enumerate(self.body):
             if _ == 0:
-                if self.direction == LEFT:
+                if (self.direction == LEFT).all():
                     block.x -= WINDOW_WIDTH / WIDTH
-                elif self.direction == RIGHT:
+                elif (self.direction == RIGHT).all():
                     block.x += WINDOW_WIDTH / WIDTH
-                elif self.direction == UP:
+                elif (self.direction == UP).all():
                     block.y -= WINDOW_HEIGHT / HEIGHT
-                elif self.direction == DOWN:
+                elif (self.direction == DOWN).all():
                     block.y += WINDOW_HEIGHT / HEIGHT
             else:
                 block.x, block.y = prev_pos[_ - 1]
