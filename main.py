@@ -129,7 +129,7 @@ def main():
             model_weights = player1.state_dict()
             torch.save(model_weights, params["weights_path"])
         if params['plot_score']:
-            SCORE.plot_seaborn(counter_plot, score_plot, params['train'])
+            SCORE.plot_seaborn(array_counter=counter_plot, array_score=score_plot, train=params['train'])
 
 
 def run_game(agent, game_number):
@@ -149,124 +149,128 @@ def run_game(agent, game_number):
     action_state_list = []
     action_counter = 0
 
-    while True:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            terminate()
+        # обработайте событие pygame.KEYDOWN
+        #  и при необходимости измените направление движения змейки.
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            # ESC key pressed
+            pygame.quit()
+            sys.exit()
+        if event.type == pygame.KEYDOWN:
+            snake.direction = get_direction(event.key, snake.direction)  # Other key pressed
+            # If any direction key was pressed - assign corresponding action.
+            action = snake.direction
+
+    steps = 0  # steps since the last positive reward
+    while (not any((snake_hit_self(snake), snake_hit_edge(snake)))) and (steps < 100):
         # Before snake does its first move, assign action = 'None'.
         action_counter += 1
         action = 'none'
         # Previous snake direction. We'll use as one of the current state parameters for evaluation.
         snake_prev_direction = snake.direction
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                terminate()
-            # обработайте событие pygame.KEYDOWN
-            #  и при необходимости измените направление движения змейки.
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                # ESC key pressed
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN:
-                snake.direction = get_direction(event.key, snake.direction)  # Other key pressed
-                # If any direction key was pressed - assign corresponding action.
-                action = snake.direction
+        if not params['train']:
+            agent.epsilon = 0.01
+        else:
+            # agent.epsilon is set to give randomness to actions
+            agent.epsilon = 1 - (game_number * params['epsilon_decay_linear'])
 
-        steps = 0  # steps since the last positive reward
-        while (not any((snake_hit_self(snake), snake_hit_edge(snake)))) and (steps < 100):
-            if not params['train']:
-                agent.epsilon = 0.01
-            else:
-                # agent.epsilon is set to give randomness to actions
-                agent.epsilon = 1 - (game_number * params['epsilon_decay_linear'])
+        # get previous environment state.
+        state_old = get_state(
+            get_state_in_json(player_score=SCORE.player_score,
+                              high_score=SCORE.high_score,
+                              head_pos=get_snake_new_head(snake),
+                              snake_pos=snake.body,
+                              apple_pos=apple.apple,
+                              prev_direction=snake_prev_direction)
+        )
+        head_apple_distance_old_x, head_apple_distance_old_y = abs(get_snake_new_head(snake)[0] - apple.apple.x),\
+                                                               abs(get_snake_new_head(snake)[1] - apple.apple.y)
 
-            # get previous environment state.
-            state_old = get_state(
-                get_state_in_json(player_score=SCORE.player_score,
-                                  high_score=SCORE.high_score,
-                                  head_pos=get_snake_new_head(snake),
-                                  snake_pos=snake.body,
-                                  apple_pos=apple.apple,
-                                  prev_direction=snake_prev_direction)
-            )
+        # perform random actions based on agent.epsilon, or choose the action
+        if random.uniform(0, 1) < agent.epsilon:
+            snake.direction = np.eye(4)[random.randint(0, 3)]
+        else:
+            # predict action based on the old state
+            with torch.no_grad():
+                state_old_tensor = torch.tensor(state_old.reshape((1, 12)), dtype=torch.float32).to(DEVICE)
+                prediction = agent(state_old_tensor)
+                snake.direction = np.eye(4)[np.argmax(prediction.detach().cpu().numpy()[0])]
 
-            # perform random actions based on agent.epsilon, or choose the action
-            if random.uniform(0, 1) < agent.epsilon:
-                snake.direction = np.eye(4)[random.randint(0, 3)]
-            else:
-                # predict action based on the old state
-                with torch.no_grad():
-                    state_old_tensor = torch.tensor(state_old.reshape((1, 12)), dtype=torch.float32).to(DEVICE)
-                    prediction = agent(state_old_tensor)
-                    snake.direction = np.eye(4)[np.argmax(prediction.detach().cpu().numpy()[0])]
+        # сдвинуть змейку в заданном направлении
+        snake.move()
 
-            # сдвинуть змейку в заданном направлении
-            snake.move()
+        # обработайте ситуацию столкновения змейки с яблоком.
+        #  В этом случае нужно:
+        #  * Увеличить размер змейки
+        #  * Создать новое яблоко.
+        if snake_hit_apple(snake, apple):
+            snake.grow()
+            apple.spawn([(block.x, block.y) for block in snake.body])  # check apple does not spawn on snake.
+            SCORE.score()
 
-            # обработайте ситуацию столкновения змейки с яблоком.
-            #  В этом случае нужно:
-            #  * Увеличить размер змейки
-            #  * Создать новое яблоко.
-            if snake_hit_apple(snake, apple):
-                snake.grow()
-                apple.spawn([(block.x, block.y) for block in snake.body])  # check apple does not spawn on snake.
-                SCORE.score()
+        # Calculate new environment state after snake moved.
+        state_new = get_state(
+            get_state_in_json(player_score=SCORE.player_score,
+                              high_score=SCORE.high_score,
+                              head_pos=get_snake_new_head(snake),
+                              snake_pos=snake.body,
+                              apple_pos=apple.apple,
+                              prev_direction=snake_prev_direction)
+        )
+        head_apple_distance_new_x, head_apple_distance_new_y = abs(get_snake_new_head(snake)[0] - apple.apple.x),\
+                                                               abs(get_snake_new_head(snake)[1] - apple.apple.y)
 
-            # Calculate new environment state after snake moved.
-            state_new = get_state(
-                get_state_in_json(player_score=SCORE.player_score,
-                                  high_score=SCORE.high_score,
-                                  head_pos=get_snake_new_head(snake),
-                                  snake_pos=snake.body,
-                                  apple_pos=apple.apple,
-                                  prev_direction=snake_prev_direction)
-            )
+        # Set reward for the new state.
+        reward = agent.set_reward(snake, apple, head_apple_distance_new_x, head_apple_distance_old_x,
+                                  head_apple_distance_new_y, head_apple_distance_old_y)
 
-            # Set reward for the new state.
-            reward = agent.set_reward(snake, apple)
+        # If snake hit apple or moved towards it, reset steps counter to 0.
+        if reward > 0:
+            steps = 0
 
-            # If snake hit apple, reset steps counter to 0.
-            if reward > 0:
-                steps = 0
+        if params['train']:
+            # train short memory base on the new action and state
+            agent.train_short_memory(state_old, snake.direction, reward, state_new,
+                                     any((snake_hit_self(snake), snake_hit_edge(snake))))
+            # store the new data into a long term memory
+            agent.remember(state_old, snake.direction, reward, state_new,
+                           any((snake_hit_self(snake), snake_hit_edge(snake))))
 
-            if params['train']:
-                # train short memory base on the new action and state
-                agent.train_short_memory(state_old, snake.direction, reward, state_new,
-                                         any((snake_hit_self(snake), snake_hit_edge(snake))))
-                # store the new data into a long term memory
-                agent.remember(state_old, snake.direction, reward, state_new,
-                               any((snake_hit_self(snake), snake_hit_edge(snake))))
+        # передать яблоко в функцию отрисовки кадра
+        # передать змейку в функцию отрисовки кадра
+        draw_frame(snake, apple, SCORE)
+        FPS_CLOCK.tick(FPS)
 
-            # передать яблоко в функцию отрисовки кадра
-            # передать змейку в функцию отрисовки кадра
-            draw_frame(snake, apple, SCORE)
-            FPS_CLOCK.tick(FPS)
+        steps += 1
 
-            steps += 1
+        # Appending the current action (could be 'none') and the current state of the snake to
+        # the list - "Action-State List".
+        action_state_list.append(({f"Action {action_counter}": action},
+                                  get_state_in_json(player_score=SCORE.player_score,
+                                                    high_score=SCORE.high_score,
+                                                    head_pos=get_snake_new_head(snake),
+                                                    snake_pos=snake.body,
+                                                    apple_pos=apple.apple,
+                                                    prev_direction=snake_prev_direction)
 
-            # Appending the current action (could be 'none') and the current state of the snake to
-            # the list - "Action-State List".
-            action_state_list.append(({f"Action {action_counter}": action},
-                                      get_state_in_json(player_score=SCORE.player_score,
-                                                        high_score=SCORE.high_score,
-                                                        head_pos=get_snake_new_head(snake),
-                                                        snake_pos=snake.body,
-                                                        apple_pos=apple.apple,
-                                                        prev_direction=snake_prev_direction)
+                                  ))
+        # "Action-State List" to current game and write json on disk.
+        STATE[f"Game #{game_number}"] = action_state_list
 
-                                      ))
-            # "Action-State List" to current game and write json on disk.
-            STATE[f"Game #{game_number}"] = action_state_list
+    # если змейка достигла границы окна, завершить игру.
+    #  Для проверки воспользуйтесь функцией snake_hit_edge.
+    if snake_hit_edge(snake):
+        write_state_to_file(STATE, CURRENT_TIME)
+        #run_game(agent, game_number + 1)
 
-        # если змейка достигла границы окна, завершить игру.
-        #  Для проверки воспользуйтесь функцией snake_hit_edge.
-        if snake_hit_edge(snake):
-            write_state_to_file(STATE, CURRENT_TIME)
-            run_game(agent, game_number + 1)
-
-        # если змейка задела свой хвост, завершить игру.
-        #  Для проверки восппользуйтесь функцией snake_hit_self.
-        if snake_hit_self(snake):
-            write_state_to_file(STATE, CURRENT_TIME)
-            run_game(agent, game_number + 1)
+    # если змейка задела свой хвост, завершить игру.
+    #  Для проверки восппользуйтесь функцией snake_hit_self.
+    if snake_hit_self(snake):
+        write_state_to_file(STATE, CURRENT_TIME)
+        #run_game(agent, game_number + 1)
 
 
 def draw_frame(snake, apple, score):

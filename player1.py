@@ -51,7 +51,8 @@ class Agent(nn.Module):
         x = F.softmax(self.f4(x), dim=-1)
         return x
 
-    def set_reward(self, snake: Snake, apple: Apple):
+    def set_reward(self, snake: Snake, apple: Apple, head_apple_distance_new_x, head_apple_distance_old_x,
+                   head_apple_distance_new_y, head_apple_distance_old_y):
         """
         Return the reward.
         The reward is:
@@ -64,7 +65,13 @@ class Agent(nn.Module):
             self.reward = -10
             return self.reward
         if snake_hit_apple(snake, apple):
-            self.reward = 10
+            self.reward = 1
+        if head_apple_distance_new_x < head_apple_distance_old_x or\
+                head_apple_distance_new_y < head_apple_distance_old_y:
+            self.reward = 1
+        elif head_apple_distance_new_x > head_apple_distance_old_x or\
+                head_apple_distance_new_y > head_apple_distance_old_y:
+            self.reward = -1
         return self.reward
 
     def remember(self, state, action, reward, next_state, done):

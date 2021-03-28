@@ -45,9 +45,9 @@ params['episodes'] = 250
 params['memory_size'] = 2500
 params['batch_size'] = 1000
 # Settings
-params['load_weights'] = False
+params['load_weights'] = True
 params['weights_path'] = 'weights/weights.h5'
 params['train'] = True
 params["test"] = False
-params['plot_score'] = True
+params['plot_score'] = False
 # params['log_path'] = 'logs/scores_' + str(datetime.datetime.now().strftime("%Y%m%d%H%M%S")) + '.txt'
