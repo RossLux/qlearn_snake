@@ -32,9 +32,7 @@ _where:_
 ### Current progress
 Currently model's avarage score is 12.
 
-<img src="/img/snake_results.PNG" width=500>
-
-<img src="img/snake_trained.gif" width=400>
+<img src="/img/snake_results.PNG" width=500> <img src="img/snake_trained.gif" width=400>
 
 
 
