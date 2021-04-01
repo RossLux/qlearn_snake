@@ -20,13 +20,13 @@ def get_state_in_json(player_score, high_score, head_pos, snake_pos, apple_pos, 
     food_left = int(head_pos[0] > apple_pos.x)
     food_right = int(head_pos[0] < apple_pos.x)
 
-    danger_above = int(head_pos[1] == CELL_SIZE) or \
+    danger_above = int(head_pos[1] < CELL_SIZE) or \
                    int(any([block.y - head_pos[1] == CELL_SIZE and block.x == head_pos[0] for _, block in enumerate(snake_pos) if _ > 1]))
-    danger_below = int(head_pos[1] == WINDOW_HEIGHT - CELL_SIZE) or \
+    danger_below = int(head_pos[1] >= WINDOW_HEIGHT - CELL_SIZE) or \
                    int(any([head_pos[1] - block.y == CELL_SIZE and block.x == head_pos[0] for _, block in enumerate(snake_pos) if _ > 1]))
-    danger_left = int(head_pos[0] == CELL_SIZE) or \
+    danger_left = int(head_pos[0] < CELL_SIZE) or \
                   int(any([head_pos[0] - block.x == CELL_SIZE and block.y == head_pos[1] for _, block in enumerate(snake_pos) if _ > 1]))
-    danger_right = int(head_pos[0] == WINDOW_WIDTH - CELL_SIZE) or \
+    danger_right = int(head_pos[0] >= WINDOW_WIDTH - CELL_SIZE) or \
                    int(any([block.x - head_pos[0] == CELL_SIZE and block.y == head_pos[1] for _, block in enumerate(snake_pos) if _ > 1]))
 
     return \
@@ -113,6 +113,7 @@ def main():
 
         # Мы всегда будем начинать игру с начала. После проигрыша сразу
         # начинается следующая.
+        print(f"Episode {game_number} of {params['episodes']}")
         run_game(player1, game_number)
 
         if params['train']:
@@ -130,6 +131,7 @@ def main():
             torch.save(model_weights, params["weights_path"])
         if params['plot_score']:
             SCORE.plot_seaborn(array_counter=counter_plot, array_score=score_plot, train=params['train'])
+    print("Training complete!")
 
 
 def run_game(agent, game_number):
@@ -191,13 +193,17 @@ def run_game(agent, game_number):
 
         # perform random actions based on agent.epsilon, or choose the action
         if random.uniform(0, 1) < agent.epsilon:
-            snake.direction = np.eye(4)[random.randint(0, 3)]
+            snake.turn(matrix=np.eye(3)[random.randint(0, 2)],
+                       prev_direction=snake_prev_direction,
+                       move_list=SNAKE_MOVE)
         else:
             # predict action based on the old state
             with torch.no_grad():
                 state_old_tensor = torch.tensor(state_old.reshape((1, 12)), dtype=torch.float32).to(DEVICE)
                 prediction = agent(state_old_tensor)
-                snake.direction = np.eye(4)[np.argmax(prediction.detach().cpu().numpy()[0])]
+                snake.turn(matrix=np.eye(3)[np.argmax(prediction.detach().cpu().numpy()[0])],
+                           prev_direction=snake_prev_direction,
+                           move_list=SNAKE_MOVE)
 
         # сдвинуть змейку в заданном направлении
         snake.move()
@@ -233,15 +239,16 @@ def run_game(agent, game_number):
 
         if params['train']:
             # train short memory base on the new action and state
-            agent.train_short_memory(state_old, snake.direction, reward, state_new,
+            agent.train_short_memory(state_old, snake.turn_direction, reward, state_new,
                                      any((snake_hit_self(snake), snake_hit_edge(snake))))
             # store the new data into a long term memory
-            agent.remember(state_old, snake.direction, reward, state_new,
+            agent.remember(state_old, snake.turn_direction, reward, state_new,
                            any((snake_hit_self(snake), snake_hit_edge(snake))))
 
         # передать яблоко в функцию отрисовки кадра
         # передать змейку в функцию отрисовки кадра
-        draw_frame(snake, apple, SCORE)
+        if params['display']:
+            draw_frame(snake, apple, SCORE)
         FPS_CLOCK.tick(FPS)
 
         steps += 1
@@ -264,13 +271,11 @@ def run_game(agent, game_number):
     #  Для проверки воспользуйтесь функцией snake_hit_edge.
     if snake_hit_edge(snake):
         write_state_to_file(STATE, CURRENT_TIME)
-        #run_game(agent, game_number + 1)
 
     # если змейка задела свой хвост, завершить игру.
     #  Для проверки восппользуйтесь функцией snake_hit_self.
     if snake_hit_self(snake):
         write_state_to_file(STATE, CURRENT_TIME)
-        #run_game(agent, game_number + 1)
 
 
 def draw_frame(snake, apple, score):

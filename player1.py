@@ -36,7 +36,7 @@ class Agent(nn.Module):
         self.f1 = nn.Linear(12, self.first_layer)
         self.f2 = nn.Linear(self.first_layer, self.second_layer)
         self.f3 = nn.Linear(self.second_layer, self.third_layer)
-        self.f4 = nn.Linear(self.third_layer, 4)
+        self.f4 = nn.Linear(self.third_layer, 3)
         # Weights
         if self.load_weights:
             self.model = self.load_state_dict(torch.load(self.weights))
@@ -62,10 +62,10 @@ class Agent(nn.Module):
         """
         self.reward = 0
         if snake_hit_self(snake) or snake_hit_edge(snake):
-            self.reward = -10
+            self.reward = -20
             return self.reward
         if snake_hit_apple(snake, apple):
-            self.reward = 1
+            self.reward = 10
         if head_apple_distance_new_x < head_apple_distance_old_x or\
                 head_apple_distance_new_y < head_apple_distance_old_y:
             self.reward = 1
