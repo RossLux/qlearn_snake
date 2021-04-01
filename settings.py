@@ -28,9 +28,20 @@ DOWN = asarray([0., 1., 0., 0.])
 LEFT = asarray([0., 0., 1., 0.])
 RIGHT = asarray([0., 0., 0., 1.])
 
+TURN_LEFT = asarray([1., 0., 0.])
+TURN_RIGHT = asarray([0., 0., 1.])
+DONT_TURN = asarray([0., 1., 0.])
+
+# This is a list of possible moves. For convenience 3x same list.
+# To find new direction after the turn left or right program will do +1 or -1 on this list.
+# Base to do +1 or -1 is the 2nd occurrence of the direction in below list.
+# That is why for ease I put direction 3 times:
+# <look behind><main list><look ahead>
+SNAKE_MOVE = [UP, RIGHT, DOWN, LEFT, UP, RIGHT, DOWN, LEFT, UP, RIGHT, DOWN, LEFT]
+
 HEAD = 0
 
-FPS = 100
+FPS = 1000
 
 DEVICE = 'cuda'  # 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -41,13 +52,14 @@ params['learning_rate'] = 0.00013629
 params['first_layer_size'] = 200  # neurons in the first layer
 params['second_layer_size'] = 20  # neurons in the second layer
 params['third_layer_size'] = 50  # neurons in the third layer
-params['episodes'] = 250
+params['episodes'] = 500
 params['memory_size'] = 2500
 params['batch_size'] = 1000
 # Settings
 params['load_weights'] = True
 params['weights_path'] = 'weights/weights.h5'
-params['train'] = True
-params["test"] = False
-params['plot_score'] = False
+params['train'] = False
+params["test"] = True
+params['plot_score'] = True
+params['display'] = False
 # params['log_path'] = 'logs/scores_' + str(datetime.datetime.now().strftime("%Y%m%d%H%M%S")) + '.txt'

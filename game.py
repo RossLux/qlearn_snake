@@ -57,6 +57,7 @@ class Snake:
         # задать исходное направление движения змейки.
         self.direction: ndarray = RIGHT
         self.head = [*args][0]
+        self.turn_direction: ndarray = DONT_TURN
 
     def draw_snake(self):
         # нарисовать змейку.
@@ -84,6 +85,27 @@ class Snake:
                     block.y += WINDOW_HEIGHT / HEIGHT
             else:
                 block.x, block.y = prev_pos[_ - 1]
+
+    def turn(self, matrix, prev_direction: ndarray, move_list: list):
+        assert len(matrix) == 3, "Snake.turn() considers 3 possible actions."
+        self.turn_direction = matrix
+        to_left, stay, to_right = self.turn_direction
+        shift = int(- 1 * to_left + 1 * to_right)
+        if (prev_direction == UP).all():
+            # 2nd occurrence of UP. need to explain why I take 2nd... just don't want bother with building a
+            # good list I take SNAKE_MOVE = 3x snake_move, so when I pick 2nd occur and do -1 or +1 element
+            # left or right I won't be out of bounds.
+            up_pos = [i for i, n in enumerate(move_list) if (n == UP).all()][1]
+            self.direction = move_list[up_pos + shift]
+        elif (prev_direction == DOWN).all():
+            down_pos = [i for i, n in enumerate(move_list) if (n == DOWN).all()][1]
+            self.direction = move_list[down_pos + shift]
+        elif (prev_direction == LEFT).all():
+            left_pos = [i for i, n in enumerate(move_list) if (n == LEFT).all()][1]
+            self.direction = move_list[left_pos + shift]
+        elif (prev_direction == RIGHT).all():
+            right_pos = [i for i, n in enumerate(move_list) if (n == RIGHT).all()][1]
+            self.direction = move_list[right_pos + shift]
 
     def grow(self):
         # предложите максимально простой
