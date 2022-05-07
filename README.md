@@ -6,7 +6,7 @@ This project is practice on reinforcement learning. Presented here is a well-kno
 
 Every move that the agent makes, the Q table is updated as below:
 
-#### `New_Q(s, a) = Current_Q(s, a) + LR[Reward(s, a) + DR * maxQ'(s', a') - Q(s, a)]`
+##### `New_Q(s, a) = Current_Q(s, a) + LR[Reward(s, a) + DR * maxQ'(s', a') - Q(s, a)]`
 
 _where:_
 
